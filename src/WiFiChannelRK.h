@@ -11,13 +11,6 @@
  */
 class WiFiChannelRK {
 public:
-    class WiFiChannelDiagnosticData: public AbstractIntegerDiagnosticData {
-    public:
-        WiFiChannelDiagnosticData(uint16_t id, const char* name = nullptr);
-    private:
-        virtual int get(IntType& val) override; // AbstractIntegerDiagnosticData
-    };
-
     /**
      * @brief Gets the singleton instance of this class, allocating it if necessary
      * 
@@ -31,6 +24,28 @@ public:
      * You typically use WiFiChannelRK::instance().setup();
      */
     void setup();
+
+    /**
+     * @brief Optional function to register a callback to be called when the channel is known
+     * 
+     * @param cb 
+     * @return WiFiChannelRK& 
+     * 
+     * The callback function has this prototype:
+     * 
+     * void callback()
+     * 
+     * For example usage, see 1-simple.cpp that registers a function and prints the results to USB debugging.
+     */
+    WiFiChannelRK &withUpdateCallback(std::function<void()> cb) { updateCallback = cb; return *this; };
+
+    /**
+     * @brief Set the delay from WiFi.ready() to doing the WiFi.scan(). Default: 4 seconds
+     * 
+     * @param scanDelay 
+     * @return WiFiChannelRK& 
+     */
+    WiFiChannelRK &withScanDelay(std::chrono::milliseconds scanDelay) { this->scanDelay = scanDelay; return *this; };
 
     /**
      * @brief Locks the mutex that protects shared resources
@@ -66,7 +81,7 @@ public:
      * @return true 
      * @return false 
      */
-    bool hasWiFiChannel() const { return channelFound; };
+    bool hasWiFiChannel() const { return channel != 0; };
 
     /**
      * @brief Returns true if the currently connected channel is a 2.4 GHz channel
@@ -135,21 +150,62 @@ protected:
      */
     bool wifiReady = false;
     
+    /**
+     * @brief The BSSID of the AP that we are connected to
+     * 
+     */
     byte bssid[6];
-    int channel = 0;
-    bool channelFound = false;
 
+    /**
+     * @brief The last channel number found, or 0 if not known
+     */
+    int channel = 0;
+
+    /**
+     * @brief Used for delaying a short period after WiFi.ready (see scanDelay)
+     */
     unsigned long stateTime = 0;
 
+    /**
+     * @brief Amount of time to wait after WiFi.ready() before doing WiFi.scan()
+     */
+    std::chrono::milliseconds scanDelay = 4s;
+
+    /**
+     * @brief State handler when idle
+     */
     void stateIdle();
+
+    /**
+     * @brief State handler when waiting to scan and during scan
+     */
     void stateScanWait();
 
+    /**
+     * @brief Finite state machine state handler
+     */
     std::function<void(WiFiChannelRK&)> stateHandler = &WiFiChannelRK::stateIdle;
 
+    /**
+     * @brief Internal method called when a Wi-Fi access point is found during WiFi.scan
+     * 
+     * @param wap Information about this Wi-Fi access point (SSID, BSSID, channel, RSSI) from the Device OS API
+     */
     void wifiScanCallback(WiFiAccessPoint* wap);
+
+    /**
+     * @brief Internal static method called when a Wi-Fi access point is found during WiFi.scan
+     * 
+     * @param wap Information about this Wi-Fi access point (SSID, BSSID, channel, RSSI) from the Device OS API
+     * 
+     * @param data The data is not used to find the object instance; this object is a singleton so it's found from that.
+     */
     static void wifiScanCallbackStatic(WiFiAccessPoint* wap, void* data);
 
-    WiFiChannelDiagnosticData *diagHandler = nullptr;
+    /**
+     * @brief Function called after the channel is known or has changed
+     */
+    std::function<void()> updateCallback = nullptr;
 
     /**
      * @brief Singleton instance of this class

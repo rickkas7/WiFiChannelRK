@@ -32,22 +32,11 @@ bool WiFiChannelRK::isWiFi_5_GHz() const {
     return channel >= 36 && channel <= 177;
 }
 
-WiFiChannelRK::WiFiChannelDiagnosticData::WiFiChannelDiagnosticData(uint16_t id, const char* name) : AbstractIntegerDiagnosticData(id, name) {
-
-}
-
-int WiFiChannelRK::WiFiChannelDiagnosticData::get(IntType& val) {
-    int channel = WiFiChannelRK::instance().channel;
-    val = channel;
-    _logger.info("WiFiChannelDiagnosticData %d", channel);
-    return SYSTEM_ERROR_NONE;
-}
-
 void WiFiChannelRK::stateIdle() {
 }
 
 void WiFiChannelRK::stateScanWait() {
-    if (millis() - stateTime < 4000) {
+    if (millis() - stateTime < scanDelay.count()) {
         return;
     }
 
@@ -55,12 +44,15 @@ void WiFiChannelRK::stateScanWait() {
     _logger.trace("Current BSSID %02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
 
     channel = 0;
-    channelFound = false;
 
     int resultCount = WiFi.scan(wifiScanCallbackStatic);
     
-    _logger.trace("resultCount=%d channel=%d channelFound=%d", resultCount, (int)channel, (int)channelFound);
+    _logger.trace("resultCount=%d channel=%d", resultCount, (int)channel);
     
+    if (updateCallback) {
+        updateCallback();
+    }
+
     stateHandler = &WiFiChannelRK::stateIdle;
 
 }
@@ -94,7 +86,6 @@ os_thread_return_t WiFiChannelRK::threadFunction(void) {
 void WiFiChannelRK::wifiScanCallback(WiFiAccessPoint* wap) {
     if (memcmp(wap->bssid, bssid, sizeof(bssid)) == 0) {
         channel = (int) wap->channel;
-        channelFound = true;
     }
 }
 
